@@ -1,0 +1,125 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if the user is an admin or super admin based on user document
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'admin' || 
+        request.auth.token.role == 'super-admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super-admin']
+      );
+    }
+
+    // Users Collection & Nested Device Tracking
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      // Allow user to create or update their own profile, status, shift, and location
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+
+      // Subcollection: Connected Devices with Global Positioning
+      match /devices/{deviceId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated();
+        allow delete: if isAdmin();
+
+        // Subcollection: Location History
+        match /locationHistory/{historyId} {
+          allow read: if isAuthenticated();
+          allow create: if isAuthenticated();
+          allow delete: if isAdmin();
+        }
+      }
+    }
+
+    // Collection Group Queries for Admin Global Monitoring
+    match /{path=**}/devices/{deviceId} {
+      allow read: if isAuthenticated();
+    }
+
+    match /{path=**}/locationHistory/{historyId} {
+      allow read: if isAuthenticated();
+    }
+
+    // Mobile Device Registration Collection for FCM
+    match /user_devices/{deviceDocId} {
+      allow read: if isAuthenticated();
+      // Users can register and update their own device tokens
+      allow write: if isAuthenticated();
+    }
+
+    // Emergencies Collection
+    match /emergencies/{emergencyId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin();
+
+      // Subcollections: Telemetry & Incident Chat
+      match /telemetry/{telemetryId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+      }
+
+      match /chat/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+      }
+    }
+
+    // Facility Locations
+    match /locations/{locationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Emergency Types
+    match /emergency_types/{typeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Job Titles
+    match /job_titles/{jobId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Private Messages
+    match /private_messages/{messageId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Logs & Audits
+    match /admin_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+    }
+
+    match /login_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+    }
+
+    match /notification_dispatch_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Server-only via Firebase Admin SDK
+    }
+
+    match /system_test_notifications/{testId} {
+      allow read, create: if isAuthenticated();
+    }
+
+    // System Config & Profiles
+    match /system/{documentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}
